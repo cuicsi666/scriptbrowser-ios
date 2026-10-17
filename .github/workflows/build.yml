@@ -1,0 +1,80 @@
+name: Build IPA
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain info
+        run: |
+          xcodebuild -version
+          sw_vers
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Generate project
+        run: xcodegen generate
+
+      - name: Build
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project ScriptBrowser.xcodeproj \
+            -scheme ScriptBrowser \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            ONLY_ACTIVE_ARCH=NO \
+            build 2>&1 | tee build.log | tail -60
+
+      - name: Package IPA
+        run: |
+          set -e
+          APP="build/Build/Products/Release-iphoneos/ScriptBrowser.app"
+          ls -la "$APP"
+          plutil -p "$APP/Info.plist" | head -40
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          if ! which ldid >/dev/null 2>&1; then
+            brew install ldid || true
+          fi
+          # 递归伪签名所有 Mach-O
+          find Payload -type f | while read f; do
+            if file "$f" | grep -q "Mach-O"; then
+              ldid -S "$f" || echo "ldid failed: $f"
+            fi
+          done
+          zip -qry ScriptBrowser-unsigned.ipa Payload
+          ls -la ScriptBrowser-unsigned.ipa
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ScriptBrowser-ipa
+          path: ScriptBrowser-unsigned.ipa
+
+      - name: Create release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="V1"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release delete "$TAG" --yes || true
+            git push --delete origin "$TAG" || true
+          fi
+          cp ScriptBrowser-unsigned.ipa "脚本浏览器_V1.ipa"
+          gh release create "$TAG" "脚本浏览器_V1.ipa" \
+            --title "脚本浏览器 V1" \
+            --notes "用户脚本 + Google 密码导入 + 本地 Cookie API 端口"
