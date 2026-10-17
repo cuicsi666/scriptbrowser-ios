@@ -246,7 +246,7 @@ struct ScriptImportSheet: View {
                     }
                 }
             }
-            .fileImporter(isPresented: $showFile, allowedContentTypes: [.javascript, .plainText, .text, .data]) { result in
+            .fileImporter(isPresented: $showFile, allowedContentTypes: [.javaScript, .plainText, .text, .data]) { result in
                 switch result {
                 case .success(let url):
                     let ok = url.startAccessingSecurityScopedResource()

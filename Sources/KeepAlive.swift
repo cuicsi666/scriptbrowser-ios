@@ -78,7 +78,7 @@ final class KeepAlive: ObservableObject {
     }
 
     private func recover() {
-        guard let engine, let player, let buf else { rebuild(); return }
+        guard let engine, let player, let buf = buffer else { rebuild(); return }
         do {
             if !engine.isRunning { try engine.start() }
             if !player.isPlaying {
